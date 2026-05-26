@@ -204,30 +204,29 @@
       <div>
         <div class="section-label" style="margin-bottom:6px;">LLM prompt template</div>
         <div style="font-size:0.68rem;color:var(--muted);margin-bottom:10px;line-height:1.6;">Paste this into Claude, ChatGPT, or any AI — then describe your expenses. The AI will return JSON ready to paste into Import.</div>
-        <div class="prompt-box" id="llm-prompt">Convert my expense list into the following JSON format. Return only the JSON array - no explanation, no markdown fences.
+        <div class="prompt-box" id="llm-prompt">Convert my expense list into a JSON array. Return only the JSON array — no explanation, no markdown fences.
 
-Schema:
-[
-  {
-    "name": "description of the purchase",
-    "amt": 0,
-    "month": 1,
-    "year": 2026,
-    "priority": "committed",
-    "purchased": true,
-    "note": "optional context"
+Each item must validate against this JSON Schema:
+
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["name", "amt", "month", "year", "priority"],
+    "additionalProperties": false,
+    "properties": {
+      "name":      { "type": "string", "description": "Short description of the purchase" },
+      "amt":       { "type": "number", "description": "Dollar amount — plain number, no $ sign or commas" },
+      "month":     { "type": "integer", "minimum": 1, "maximum": 12, "description": "Month number" },
+      "year":      { "type": "integer", "description": "4-digit calendar year, e.g. 2026" },
+      "priority":  { "type": "string", "enum": ["committed", "optional", "nicetohave"],
+                     "description": "committed=must buy · optional=likely but flexible · nicetohave=desired but skippable" },
+      "purchased": { "type": "boolean", "const": true, "description": "Omit unless already bought/paid" },
+      "note":      { "type": "string", "description": "Brief context — omit if nothing to add" }
+    }
   }
-]
-
-Field rules:
-- name: short description of what is being purchased
-- amt: dollar amount as a plain number (no $ sign, no commas)
-- month: month number 1-12
-- year: 4-digit year
-- priority: exactly one of "committed" (must buy), "optional" (likely but flexible), "nicetohave" (want but could skip)
-- purchased: true only if already bought/paid -- omit this field entirely if not yet purchased
-- note: brief context or details -- omit this field entirely if there is nothing to add
-- id: omit entirely -- it will be auto-generated
+}
 
 My expenses:
 [describe your expenses here, or paste a list]</div>
