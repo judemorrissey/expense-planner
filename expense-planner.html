@@ -87,46 +87,6 @@
     font-size:0.65rem;padding:3px 7px;cursor:pointer;transition:all 0.15s;}
   .btn-del:hover{border-color:var(--red);color:var(--red);}
 
-  @keyframes wiggle {
-    0%,100%{transform:translateX(0) rotate(0);}
-    15%{transform:translateX(-6px) rotate(-3deg);}
-    30%{transform:translateX(6px) rotate(3deg);}
-    45%{transform:translateX(-5px) rotate(-2deg);}
-    60%{transform:translateX(5px) rotate(2deg);}
-    75%{transform:translateX(-3px) rotate(-1deg);}
-    90%{transform:translateX(3px) rotate(1deg);}
-  }
-  @keyframes wiggle2 {
-    0%,100%{transform:translateX(0) rotate(0) scale(1);}
-    10%{transform:translateX(-8px) rotate(-4deg) scale(1.04);}
-    25%{transform:translateX(9px) rotate(4deg) scale(1.04);}
-    40%{transform:translateX(-8px) rotate(-3deg) scale(1.03);}
-    55%{transform:translateX(8px) rotate(3deg) scale(1.03);}
-    70%{transform:translateX(-5px) rotate(-2deg);}
-    85%{transform:translateX(5px) rotate(2deg);}
-  }
-  @keyframes boom {
-    0%  { transform:scale(1); background:#f87171; color:#000; border-color:#f87171; }
-    20% { transform:scale(1.35) rotate(-2deg); background:#ff4444; color:#fff; }
-    40% { transform:scale(0.85) rotate(1deg); }
-    60% { transform:scale(1.2) rotate(-1deg); background:#ff6600; }
-    80% { transform:scale(0.95); opacity:0.7; }
-    100%{ transform:scale(1); opacity:1; }
-  }
-  .btn-reset {
-    font-size:0.65rem; padding:6px 12px; font-family:'DM Mono',monospace;
-    border:1px solid #333; color:#f87171; background:none; cursor:pointer;
-    position:relative; overflow:hidden; transition:border-color 0.2s, color 0.2s;
-    white-space:nowrap;
-  }
-  .btn-reset:hover { border-color:#f87171; }
-  .btn-reset.s1 { border-color:#f0a060; color:#f0a060; animation: wiggle 0.5s ease; }
-  .btn-reset.s2 { border-color:#f87171; color:#f87171; animation: wiggle2 0.55s ease; }
-  .btn-reset.boom { animation: boom 0.6s ease forwards; }
-  .btn-reset-bar {
-    position:absolute; top:0; left:0; height:100%;
-    background:#f8717122; transition:none; pointer-events:none;
-  }
 
   .summary-note{font-size:0.65rem;color:var(--muted);margin-top:16px;line-height:1.7;padding-top:12px;border-top:1px solid var(--border);}
   .summary-note span{color:var(--accent3);}
@@ -163,12 +123,7 @@
   </div>
   <div style="display:flex;gap:10px;align-items:center;">
     <button class="btn-del" style="font-size:0.65rem;padding:6px 12px;" onclick="exportData()" title="Copy current expenses JSON to clipboard">⬆ Export</button>
-    <button class="btn-del" style="font-size:0.65rem;padding:6px 12px;" onclick="syncDefaults()" title="Merge any new default entries into saved data">↻ Sync</button>
-    <button class="btn-reset" id="btn-reset" onclick="handleReset()">
-      <div class="btn-reset-bar" id="reset-bar" style="width:0%"></div>
-      <span id="reset-label" style="position:relative;">⚠ Reset</span>
-    </button>
-    <div class="badge">Starting Mar 2026</div>
+    <div class="badge" id="header-badge">Expense Planner</div>
   </div>
 </div>
 
@@ -276,8 +231,6 @@ const PRIORITY_LABELS = {
   nicetohave:  'Nice to Have',
 };
 
-const DEFAULT_EXPENSES = [];
-
 let expenses = [];
 const uid = () => 'e' + Math.random().toString(36).slice(2, 9);
 
@@ -303,117 +256,13 @@ async function exportData() {
   }
 }
 
-async function syncDefaults() {
-  // Merge any DEFAULT_EXPENSES entries not already in storage by id
-  const existingIds = new Set(expenses.map(e => e.id));
-  const newEntries = DEFAULT_EXPENSES.filter(e => !existingIds.has(e.id));
-  if (newEntries.length === 0) { alert('Already up to date.'); return; }
-  expenses = [...expenses, ...newEntries];
-  localStorage.setItem('expenses_2026', JSON.stringify(expenses));
-  render();
-  alert(`Synced ${newEntries.length} new item${newEntries.length>1?'s':''}.`);
-}
-
-let resetState = 0;
-let resetTimer = null;
-let resetRafId = null;
-const RESET_WINDOW = 3000;
-
-function handleReset() {
-  resetState++;
-  const btn = document.getElementById('btn-reset');
-  const label = document.getElementById('reset-label');
-  const bar = document.getElementById('reset-bar');
-
-  if (resetState === 3) {
-    // BOOM
-    clearTimeout(resetTimer);
-    cancelAnimationFrame(resetRafId);
-    bar.style.width = '100%';
-    bar.style.background = '#ff444444';
-    label.textContent = '💥 BOOM';
-    btn.className = 'btn-reset boom';
-
-    // Spawn explosion emojis
-    const emojis = ['💥','🔥','✨','⚡','🌋','💣'];
-    for(let i = 0; i < 10; i++) {
-      const el = document.createElement('div');
-      el.textContent = emojis[Math.floor(Math.random()*emojis.length)];
-      el.style.cssText = `position:fixed;font-size:${1.2+Math.random()*1.4}rem;
-        pointer-events:none;z-index:9999;
-        left:${btn.getBoundingClientRect().left + btn.offsetWidth/2}px;
-        top:${btn.getBoundingClientRect().top}px;
-        transition:transform ${0.5+Math.random()*0.4}s ease-out, opacity 0.6s ease;
-        opacity:1;`;
-      document.body.appendChild(el);
-      setTimeout(() => {
-        const angle = (Math.random() - 0.5) * 260;
-        const dist = 60 + Math.random() * 100;
-        el.style.transform = `translate(${Math.cos(angle)*dist}px, ${-Math.abs(Math.sin(angle)*dist)-20}px) rotate(${angle}deg)`;
-        el.style.opacity = '0';
-      }, 20);
-      setTimeout(() => el.remove(), 1200);
-    }
-
-    setTimeout(() => {
-      localStorage.removeItem('expenses_2026');
-      expenses = [...DEFAULT_EXPENSES];
-      render();
-      cancelResetState();
-    }, 600);
-    return;
-  }
-
-  // Update label and style
-  btn.className = `btn-reset s${resetState}`;
-  // Force reflow to restart animation
-  void btn.offsetWidth;
-  btn.className = `btn-reset s${resetState}`;
-  label.textContent = resetState === 1 ? '⚠ Are you sure?' : '⚠ Really sure?';
-
-  // Start/restart depleting bar
-  clearTimeout(resetTimer);
-  cancelAnimationFrame(resetRafId);
-  const start = performance.now();
-  bar.style.width = '100%';
-
-  function deplete(now) {
-    const elapsed = now - start;
-    const pct = Math.max(0, 100 - (elapsed / RESET_WINDOW) * 100);
-    bar.style.width = pct + '%';
-    if (pct > 0) {
-      resetRafId = requestAnimationFrame(deplete);
-    }
-  }
-  resetRafId = requestAnimationFrame(deplete);
-
-  resetTimer = setTimeout(cancelResetState, RESET_WINDOW);
-}
-
-function cancelResetState() {
-  resetState = 0;
-  clearTimeout(resetTimer);
-  cancelAnimationFrame(resetRafId);
-  const btn = document.getElementById('btn-reset');
-  const label = document.getElementById('reset-label');
-  const bar = document.getElementById('reset-bar');
-  btn.className = 'btn-reset';
-  label.textContent = '⚠ Reset';
-  bar.style.width = '0%';
-}
-
-function resetStorage() {
-  localStorage.removeItem('expenses_2026');
-  expenses = [...DEFAULT_EXPENSES];
-  render();
-}
 
 function initData() {
   try {
     const stored = localStorage.getItem('expenses_2026');
-    expenses = stored ? JSON.parse(stored) : [...DEFAULT_EXPENSES];
+    expenses = stored ? JSON.parse(stored) : [];
   } catch(e) {
-    expenses = [...DEFAULT_EXPENSES];
+    expenses = [];
   }
   render();
   initForm();
