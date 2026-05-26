@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026 Expense Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:#0f0f0f; --surface:#171717; --surface2:#1f1f1f; --border:#2a2a2a;
+    --accent:#c8f060; --accent2:#60c8f0; --accent3:#f0a060;
+    --text:#e8e8e8; --muted:#666; --green:#4ade80; --red:#f87171;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;min-height:100vh;padding:32px 24px;}
+
+  .header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:32px;border-bottom:1px solid var(--border);padding-bottom:24px;}
+  .title{font-family:'Playfair Display',serif;font-size:2rem;font-weight:700;letter-spacing:-0.02em;}
+  .subtitle{color:var(--muted);font-size:0.72rem;margin-top:4px;letter-spacing:0.1em;text-transform:uppercase;}
+  .badge{background:var(--accent);color:#000;font-weight:500;font-size:0.78rem;padding:6px 14px;letter-spacing:0.08em;}
+
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;}
+  .kpi{background:var(--surface);border:1px solid var(--border);padding:18px 20px;position:relative;overflow:hidden;}
+  .kpi::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;}
+  .kpi.a::before{background:var(--accent);}
+  .kpi.b::before{background:var(--red);}
+  .kpi.c::before{background:var(--accent3);}
+  .kpi.d::before{background:var(--green);}
+  .kpi-label{font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.12em;margin-bottom:8px;}
+  .kpi-value{font-size:1.4rem;font-weight:500;letter-spacing:-0.02em;}
+  .kpi-sub{font-size:0.65rem;color:var(--muted);margin-top:5px;}
+
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px;}
+  .card{background:var(--surface);border:1px solid var(--border);padding:22px;}
+  .card-title{font-size:0.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.12em;margin-bottom:18px;}
+
+  /* Expense items */
+  .expense-items{display:flex;flex-direction:column;gap:0;}
+  .exp-item{display:grid;grid-template-columns:auto 1fr auto auto auto;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);}
+  .exp-item:last-child{border-bottom:none;}
+  .status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .dot-committed{background:var(--red);}
+  .dot-optional{background:var(--accent3);}
+  .dot-nicetohave{background:var(--accent2);}
+  .exp-name{font-size:0.8rem;}
+  .exp-sub{font-size:0.62rem;color:var(--muted);margin-top:3px;}
+  .exp-tag{font-size:0.6rem;padding:2px 7px;border:1px solid var(--border);color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;}
+  .exp-month{font-size:0.7rem;color:var(--accent2);text-align:center;min-width:50px;}
+  .exp-amt{font-size:0.85rem;font-weight:500;text-align:right;min-width:60px;}
+
+  /* Monthly timeline */
+  .timeline{display:flex;flex-direction:column;gap:0;}
+  .tl-row{display:grid;grid-template-columns:64px 1fr auto;align-items:start;gap:16px;padding:12px 0;border-bottom:1px solid #1a1a1a;position:relative;}
+  .tl-row:last-child{border-bottom:none;}
+  .tl-month{font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;padding-top:2px;}
+  .tl-month.current{color:var(--accent);font-weight:500;}
+  .tl-events{display:flex;flex-direction:column;gap:6px;}
+  .tl-event{display:flex;align-items:center;gap:8px;font-size:0.72rem;}
+  .tl-pip{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .tl-none{font-size:0.68rem;color:#333;font-style:italic;}
+  .tl-cash{font-size:0.72rem;font-weight:500;text-align:right;white-space:nowrap;padding-top:2px;}
+  .tl-cash.ok{color:var(--green);}
+  .tl-cash.tight{color:var(--accent3);}
+  .tl-cash.low{color:var(--red);}
+
+  /* Cash bar */
+  .cash-bar-wrap{height:5px;background:var(--border);margin-top:6px;width:100%;}
+  .cash-bar-fill{height:100%;transition:width 0.3s;}
+
+  /* Add expense form */
+  .add-form{display:grid;grid-template-columns:1fr 90px 120px 100px auto;gap:10px;align-items:end;margin-bottom:20px;}
+  .form-group{display:flex;flex-direction:column;gap:5px;}
+  .form-label{font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;}
+  input[type=text], input[type=number], select{
+    background:var(--surface2);border:1px solid var(--border);color:var(--text);
+    font-family:'DM Mono',monospace;font-size:0.75rem;padding:8px 10px;outline:none;
+    transition:border-color 0.15s;
+  }
+  input[type=text]:focus, input[type=number]:focus, select:focus{border-color:var(--accent2);}
+  select option{background:var(--surface2);}
+  .btn-add{background:var(--accent);color:#000;border:none;font-family:'DM Mono',monospace;
+    font-size:0.72rem;font-weight:500;padding:9px 16px;cursor:pointer;letter-spacing:0.06em;
+    transition:opacity 0.15s;white-space:nowrap;}
+  .btn-add:hover{opacity:0.85;}
+  .btn-del{background:none;border:1px solid #333;color:#555;font-family:'DM Mono',monospace;
+    font-size:0.65rem;padding:3px 7px;cursor:pointer;transition:all 0.15s;}
+  .btn-del:hover{border-color:var(--red);color:var(--red);}
+
+  @keyframes wiggle {
+    0%,100%{transform:translateX(0) rotate(0);}
+    15%{transform:translateX(-6px) rotate(-3deg);}
+    30%{transform:translateX(6px) rotate(3deg);}
+    45%{transform:translateX(-5px) rotate(-2deg);}
+    60%{transform:translateX(5px) rotate(2deg);}
+    75%{transform:translateX(-3px) rotate(-1deg);}
+    90%{transform:translateX(3px) rotate(1deg);}
+  }
+  @keyframes wiggle2 {
+    0%,100%{transform:translateX(0) rotate(0) scale(1);}
+    10%{transform:translateX(-8px) rotate(-4deg) scale(1.04);}
+    25%{transform:translateX(9px) rotate(4deg) scale(1.04);}
+    40%{transform:translateX(-8px) rotate(-3deg) scale(1.03);}
+    55%{transform:translateX(8px) rotate(3deg) scale(1.03);}
+    70%{transform:translateX(-5px) rotate(-2deg);}
+    85%{transform:translateX(5px) rotate(2deg);}
+  }
+  @keyframes boom {
+    0%  { transform:scale(1); background:#f87171; color:#000; border-color:#f87171; }
+    20% { transform:scale(1.35) rotate(-2deg); background:#ff4444; color:#fff; }
+    40% { transform:scale(0.85) rotate(1deg); }
+    60% { transform:scale(1.2) rotate(-1deg); background:#ff6600; }
+    80% { transform:scale(0.95); opacity:0.7; }
+    100%{ transform:scale(1); opacity:1; }
+  }
+  .btn-reset {
+    font-size:0.65rem; padding:6px 12px; font-family:'DM Mono',monospace;
+    border:1px solid #333; color:#f87171; background:none; cursor:pointer;
+    position:relative; overflow:hidden; transition:border-color 0.2s, color 0.2s;
+    white-space:nowrap;
+  }
+  .btn-reset:hover { border-color:#f87171; }
+  .btn-reset.s1 { border-color:#f0a060; color:#f0a060; animation: wiggle 0.5s ease; }
+  .btn-reset.s2 { border-color:#f87171; color:#f87171; animation: wiggle2 0.55s ease; }
+  .btn-reset.boom { animation: boom 0.6s ease forwards; }
+  .btn-reset-bar {
+    position:absolute; top:0; left:0; height:100%;
+    background:#f8717122; transition:none; pointer-events:none;
+  }
+
+  .summary-note{font-size:0.65rem;color:var(--muted);margin-top:16px;line-height:1.7;padding-top:12px;border-top:1px solid var(--border);}
+  .summary-note span{color:var(--accent3);}
+
+  /* Inline edit controls */
+  .month-pill{font-size:0.6rem;padding:2px 7px;border:1px solid var(--border);color:var(--accent2);
+    text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;background:none;font-family:'DM Mono',monospace;
+    transition:border-color 0.15s;}
+  .month-pill:hover{border-color:var(--accent2);}
+  .month-pill:focus{outline:none;border-color:var(--accent2);}
+  .status-btn{background:none;border:none;cursor:pointer;font-size:1rem;line-height:1;padding:2px;
+    opacity:0.7;transition:opacity 0.15s;font-family:'DM Mono',monospace;}
+  .status-btn:hover{opacity:1;}
+  .amt-input{background:none;border:none;border-bottom:1px solid var(--border2);color:var(--text);
+    font-family:'DM Mono',monospace;font-size:0.85rem;font-weight:500;width:72px;text-align:right;
+    outline:none;padding:2px 0;}
+  .amt-input:focus{border-bottom-color:var(--accent);}
+  input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{display:none;}
+  input[type=number]{-moz-appearance:textfield;appearance:textfield;}
+
+  @media(max-width:900px){
+    .kpi-row{grid-template-columns:1fr 1fr;}
+    .grid-2{grid-template-columns:1fr;}
+    .add-form{grid-template-columns:1fr 1fr;}
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="title">2026 Expense Planner</div>
+    <div class="subtitle">Planned purchases · Cash flow impact · Timing recommendations</div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <button class="btn-del" style="font-size:0.65rem;padding:6px 12px;" onclick="exportData()" title="Copy current expenses JSON to clipboard">⬆ Export</button>
+    <button class="btn-del" style="font-size:0.65rem;padding:6px 12px;" onclick="syncDefaults()" title="Merge any new default entries into saved data">↻ Sync</button>
+    <button class="btn-reset" id="btn-reset" onclick="handleReset()">
+      <div class="btn-reset-bar" id="reset-bar" style="width:0%"></div>
+      <span id="reset-label" style="position:relative;">⚠ Reset</span>
+    </button>
+    <div class="badge">Starting Mar 2026</div>
+  </div>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-row">
+  <div class="kpi a">
+    <div class="kpi-label">Monthly Net Cash</div>
+    <div class="kpi-value">$1,423</div>
+    <div class="kpi-sub">After all fixed expenses & savings</div>
+  </div>
+  <div class="kpi b">
+    <div class="kpi-label">Total Planned Spend</div>
+    <div class="kpi-value" id="kpi-total">—</div>
+    <div class="kpi-sub" id="kpi-months">—</div>
+  </div>
+  <div class="kpi c">
+    <div class="kpi-label">Committed This Year</div>
+    <div class="kpi-value" id="kpi-committed">—</div>
+    <div class="kpi-sub" id="kpi-committed-sub">—</div>
+  </div>
+  <div class="kpi d">
+    <div class="kpi-label">Remaining Annual Cash</div>
+    <div class="kpi-value" id="kpi-remaining">—</div>
+    <div class="kpi-sub">After all planned expenses</div>
+  </div>
+</div>
+<!-- Leftover savings banner -->
+<div class="kpi" style="margin-bottom:28px;border-color:#4ade8055;background:linear-gradient(90deg,#171717,#1a2a1a);">
+  <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;">
+    <div>
+      <div class="kpi-label" style="color:#4ade80;">↑ Leftover Savings Accumulated</div>
+      <div class="kpi-value" id="kpi-leftover" style="color:#4ade80;">—</div>
+      <div class="kpi-sub" id="kpi-leftover-sub">Unspent discretionary cash from completed months — real money you kept</div>
+    </div>
+    <div style="font-size:2rem;opacity:0.3;">🏦</div>
+  </div>
+</div>
+
+<!-- Add new expense -->
+<div class="card" style="margin-bottom:28px;">
+  <div class="card-title">Add an Expense</div>
+  <div class="add-form">
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <input type="text" id="inp-name" placeholder="e.g. Weekend trip">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Amount ($)</label>
+      <input type="number" id="inp-amt" placeholder="0" min="0">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Month</label>
+      <select id="inp-month"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Year</label>
+      <select id="inp-year"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Priority</label>
+      <select id="inp-priority">
+        <option value="committed">Committed</option>
+        <option value="optional">Optional</option>
+        <option value="nicetohave">Nice to Have</option>
+        <option value="purchased">Purchased</option>
+      </select>
+    </div>
+    <button class="btn-add" onclick="addExpense()">+ Add</button>
+  </div>
+</div>
+
+<div class="grid-2">
+  <!-- Expense list -->
+  <div class="card">
+    <div class="card-title">Planned Expenses</div>
+    <div class="expense-items" id="expenseItems"></div>
+    <div class="summary-note" id="summaryNote"></div>
+  </div>
+
+  <!-- Monthly timeline -->
+  <div class="card">
+    <div class="card-title">Monthly Cash Impact — Mar to Dec 2026</div>
+    <div class="timeline" id="timeline"></div>
+  </div>
+</div>
+
+<!-- Chart -->
+<div class="card">
+  <div class="card-title">Running Cash Balance After Planned Expenses</div>
+  <div style="position:relative;height:220px;"><canvas id="cashChart"></canvas></div>
+</div>
+
+<script>
+const MONTHS_ALL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+const PRIORITY_COLORS = {
+  committed:   '#f87171',
+  optional:    '#f0a060',
+  nicetohave:  '#60c8f0',
+};
+const PRIORITY_LABELS = {
+  committed:   'Committed',
+  optional:    'Optional',
+  nicetohave:  'Nice to Have',
+};
+
+const DEFAULT_EXPENSES = [];
+
+let expenses = [];
+const uid = () => 'e' + Math.random().toString(36).slice(2, 9);
+
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem('expenses_2026', JSON.stringify(expenses));
+    } catch(e) { console.error('save failed', e); }
+  }, 1000);
+}
+
+async function exportData() {
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(expenses, null, 2));
+    const btn = [...document.querySelectorAll('button')].find(b => b.textContent.includes('Export'));
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = orig, 2000);
+  } catch(e) {
+    prompt('Copy this JSON:', JSON.stringify(expenses));
+  }
+}
+
+async function syncDefaults() {
+  // Merge any DEFAULT_EXPENSES entries not already in storage by id
+  const existingIds = new Set(expenses.map(e => e.id));
+  const newEntries = DEFAULT_EXPENSES.filter(e => !existingIds.has(e.id));
+  if (newEntries.length === 0) { alert('Already up to date.'); return; }
+  expenses = [...expenses, ...newEntries];
+  localStorage.setItem('expenses_2026', JSON.stringify(expenses));
+  render();
+  alert(`Synced ${newEntries.length} new item${newEntries.length>1?'s':''}.`);
+}
+
+let resetState = 0;
+let resetTimer = null;
+let resetRafId = null;
+const RESET_WINDOW = 3000;
+
+function handleReset() {
+  resetState++;
+  const btn = document.getElementById('btn-reset');
+  const label = document.getElementById('reset-label');
+  const bar = document.getElementById('reset-bar');
+
+  if (resetState === 3) {
+    // BOOM
+    clearTimeout(resetTimer);
+    cancelAnimationFrame(resetRafId);
+    bar.style.width = '100%';
+    bar.style.background = '#ff444444';
+    label.textContent = '💥 BOOM';
+    btn.className = 'btn-reset boom';
+
+    // Spawn explosion emojis
+    const emojis = ['💥','🔥','✨','⚡','🌋','💣'];
+    for(let i = 0; i < 10; i++) {
+      const el = document.createElement('div');
+      el.textContent = emojis[Math.floor(Math.random()*emojis.length)];
+      el.style.cssText = `position:fixed;font-size:${1.2+Math.random()*1.4}rem;
+        pointer-events:none;z-index:9999;
+        left:${btn.getBoundingClientRect().left + btn.offsetWidth/2}px;
+        top:${btn.getBoundingClientRect().top}px;
+        transition:transform ${0.5+Math.random()*0.4}s ease-out, opacity 0.6s ease;
+        opacity:1;`;
+      document.body.appendChild(el);
+      setTimeout(() => {
+        const angle = (Math.random() - 0.5) * 260;
+        const dist = 60 + Math.random() * 100;
+        el.style.transform = `translate(${Math.cos(angle)*dist}px, ${-Math.abs(Math.sin(angle)*dist)-20}px) rotate(${angle}deg)`;
+        el.style.opacity = '0';
+      }, 20);
+      setTimeout(() => el.remove(), 1200);
+    }
+
+    setTimeout(() => {
+      localStorage.removeItem('expenses_2026');
+      expenses = [...DEFAULT_EXPENSES];
+      render();
+      cancelResetState();
+    }, 600);
+    return;
+  }
+
+  // Update label and style
+  btn.className = `btn-reset s${resetState}`;
+  // Force reflow to restart animation
+  void btn.offsetWidth;
+  btn.className = `btn-reset s${resetState}`;
+  label.textContent = resetState === 1 ? '⚠ Are you sure?' : '⚠ Really sure?';
+
+  // Start/restart depleting bar
+  clearTimeout(resetTimer);
+  cancelAnimationFrame(resetRafId);
+  const start = performance.now();
+  bar.style.width = '100%';
+
+  function deplete(now) {
+    const elapsed = now - start;
+    const pct = Math.max(0, 100 - (elapsed / RESET_WINDOW) * 100);
+    bar.style.width = pct + '%';
+    if (pct > 0) {
+      resetRafId = requestAnimationFrame(deplete);
+    }
+  }
+  resetRafId = requestAnimationFrame(deplete);
+
+  resetTimer = setTimeout(cancelResetState, RESET_WINDOW);
+}
+
+function cancelResetState() {
+  resetState = 0;
+  clearTimeout(resetTimer);
+  cancelAnimationFrame(resetRafId);
+  const btn = document.getElementById('btn-reset');
+  const label = document.getElementById('reset-label');
+  const bar = document.getElementById('reset-bar');
+  btn.className = 'btn-reset';
+  label.textContent = '⚠ Reset';
+  bar.style.width = '0%';
+}
+
+function resetStorage() {
+  localStorage.removeItem('expenses_2026');
+  expenses = [...DEFAULT_EXPENSES];
+  render();
+}
+
+function initData() {
+  try {
+    const stored = localStorage.getItem('expenses_2026');
+    expenses = stored ? JSON.parse(stored) : [...DEFAULT_EXPENSES];
+  } catch(e) {
+    expenses = [...DEFAULT_EXPENSES];
+  }
+  render();
+  initForm();
+}
+
+let cashChart = null;
+
+function initForm() {
+  const now = new Date();
+  const curMonth = now.getMonth() + 1;
+  const curYear = now.getFullYear();
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  // Month dropdown — all 12 months, default to current
+  const mSel = document.getElementById('inp-month');
+  mSel.innerHTML = '';
+  for(let m = 1; m <= 12; m++) {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = monthNames[m-1];
+    if(m === curMonth) opt.selected = true;
+    mSel.appendChild(opt);
+  }
+
+  // Year dropdown — current year + next 2
+  const ySel = document.getElementById('inp-year');
+  ySel.innerHTML = '';
+  for(let y = curYear; y <= curYear + 2; y++) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    if(y === curYear) opt.selected = true;
+    ySel.appendChild(opt);
+  }
+}
+
+function addExpense(){
+  const name = document.getElementById('inp-name').value.trim();
+  const amt  = parseFloat(document.getElementById('inp-amt').value);
+  const month= parseInt(document.getElementById('inp-month').value);
+  const pri  = document.getElementById('inp-priority').value;
+  if(!name || !amt || amt<=0) return;
+  const isPurchased = pri === 'purchased';
+  expenses.push({
+    id: uid(),
+    name, amt, month,
+    priority: isPurchased ? 'committed' : pri,
+    ...(isPurchased && { purchased: true })
+  });
+  document.getElementById('inp-name').value = '';
+  document.getElementById('inp-amt').value  = '';
+  save();
+  render();
+}
+
+function editName(id) {
+  const e = findById(id);
+  if(!e) return;
+  const el = document.getElementById(`name-${id}`);
+  if(!el) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = e.name;
+  input.style.cssText = 'background:var(--s2);border:none;border-bottom:1px solid var(--accent);color:var(--text);font-family:"DM Mono",monospace;font-size:0.78rem;font-weight:500;width:100%;outline:none;padding:2px 0;';
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+  const commit = () => {
+    const val = input.value.trim();
+    if(val) { e.name = val; save(); }
+    render();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', ev => { if(ev.key === 'Enter') input.blur(); if(ev.key === 'Escape') { render(); } });
+}
+
+const findById = id => expenses.find(e => e.id == id);
+
+function updateAmt(id, val){
+  const e = findById(id);
+  if(!e) return;
+  const parsed = parseFloat(val);
+  if(isNaN(parsed) || parsed <= 0) return;
+  e.amt = parsed;
+  save(); renderTimeline(); renderKPIs(); renderChart();
+}
+
+function cycleStatus(id){
+  const e = findById(id);
+  if(!e) return;
+  if(e.purchased){ e.purchased = false; e.priority = 'committed'; }
+  else if(e.priority === 'committed'){ e.priority = 'optional'; }
+  else if(e.priority === 'optional'){ e.priority = 'nicetohave'; }
+  else { e.purchased = true; }
+  save(); render();
+}
+
+function updateMonth(id, val){
+  const e = findById(id);
+  if(!e) return;
+  e.month = parseInt(val);
+  save(); render();
+}
+
+function deleteExpense(id){
+  expenses = expenses.filter(e => e.id != id);
+  save();
+  render();
+}
+
+function render(){
+  renderList();
+  renderTimeline();
+  renderKPIs();
+  renderChart();
+}
+
+function renderList(){
+  const el = document.getElementById('expenseItems');
+  el.innerHTML = '';
+  [...expenses].sort((a,b)=>a.month-b.month).forEach(e=>{
+    const color = PRIORITY_COLORS[e.priority];
+    const statusIcon = e.purchased ? '✅' : e.priority === 'committed' ? '🔴' : e.priority === 'optional' ? '🟡' : '🔵';
+    const statusTitle = e.purchased ? 'Purchased — click to cycle' : `${PRIORITY_LABELS[e.priority]} — click to cycle`;
+    el.innerHTML += `
+      <div class="exp-item">
+        <button class="status-btn" title="${statusTitle}" onclick="cycleStatus('${e.id}')">${statusIcon}</button>
+        <div style="flex:1;min-width:0;">
+          <div class="exp-name" style="${e.purchased ? 'text-decoration:line-through;opacity:0.5' : ''}" id="name-${e.id}">${e.name}</div>
+          <div class="exp-sub">${e.purchased ? '✓ purchased' : PRIORITY_LABELS[e.priority]}</div>
+        </div>
+        <select class="month-pill" onchange="updateMonth('${e.id}', this.value)">
+          ${MONTH_NO.map((mo,i) => `<option value="${mo}" ${mo===e.month?'selected':''}>${MONTHS[i]}</option>`).join('')}
+        </select>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input class="amt-input" type="number" value="${e.amt}" onchange="updateAmt('${e.id}', this.value)" onblur="updateAmt('${e.id}', this.value)">
+          <button class="status-btn" title="Edit name" onclick="editName('${e.id}')" style="opacity:0.4;font-size:0.8rem;">✏️</button>
+          <button class="btn-del" onclick="deleteExpense('${e.id}')">✕</button>
+        </div>
+      </div>`;
+  });
+
+  // Summary note
+  const note = document.getElementById('summaryNote');
+  const committed = expenses.filter(e=>e.priority==='committed').reduce((s,e)=>s+e.amt,0);
+  const optional  = expenses.filter(e=>e.priority==='optional').reduce((s,e)=>s+e.amt,0);
+  const nth       = expenses.filter(e=>e.priority==='nicetohave').reduce((s,e)=>s+e.amt,0);
+  const mayMonth  = expenses.filter(e=>e.month===5).reduce((s,e)=>s+e.amt,0);
+
+  let notes = [];
+  if(mayMonth > NET_MO){
+    notes.push(`<span>May is your heaviest month</span> at $${mayMonth.toLocaleString()} — $${(mayMonth-NET_MO).toFixed(0)} over your monthly net cash. Consider spreading purchases across Apr/May.`);
+  }
+  if(optional+nth > 0){
+    notes.push(`Deferring optional & nice-to-have items saves <span>$${(optional+nth).toLocaleString()}</span> if needed.`);
+  }
+  note.innerHTML = notes.join('<br><br>');
+}
+
+function renderTimeline(){
+  const el = document.getElementById('timeline');
+  el.innerHTML = '';
+  const currentMonth = new Date().getMonth() + 1;
+  let running = 0;
+  MONTH_NO.forEach((mo, i)=>{
+    const moExp = expenses.filter(e=>e.month===mo);
+    const moPlanned = moExp.reduce((s,e)=>s+e.amt,0);
+    const moActual  = moExp.filter(e=>e.purchased).reduce((s,e)=>s+e.amt,0);
+    const cashLeft  = NET_MO - moPlanned;
+    running += cashLeft;
+    const isPast    = mo < currentMonth;
+    const isCurrent = mo === currentMonth;
+    const cashClass = cashLeft >= 600 ? 'ok' : cashLeft >= 0 ? 'tight' : 'low';
+    const barPct    = Math.max(0, Math.min(100, (cashLeft/NET_MO)*100));
+    const barColor  = cashLeft >= 600 ? '#4ade80' : cashLeft >= 0 ? '#f0a060' : '#f87171';
+    const hasUnpurchased = moExp.some(e=>!e.purchased);
+
+    let eventsHtml = moExp.length
+      ? moExp.map(e=>`<div class="tl-event">
+          <span class="tl-pip" style="background:${e.purchased ? '#4ade80' : PRIORITY_COLORS[e.priority]}"></span>
+          <span style="${e.purchased?'opacity:0.45':''}">${e.name} — $${e.amt.toLocaleString()}${e.purchased?' ✓':''}</span>
+        </div>`).join('')
+      : `<div class="tl-none">No planned expenses</div>`;
+
+    const actualLine = hasUnpurchased && moPlanned > 0 ? `
+      <div style="display:flex;justify-content:space-between;font-size:0.6rem;margin-top:4px;">
+        <span style="color:var(--muted)">planned <span style="color:var(--dim)">$${moPlanned.toLocaleString()}</span></span>
+        <span style="color:var(--muted)">spent so far <span style="color:var(--dim)">$${moActual.toLocaleString()}</span></span>
+      </div>` : '';
+
+    el.innerHTML += `
+      <div class="tl-row" style="${isPast?'opacity:0.55':''}">
+        <div class="tl-month ${isCurrent?'current':''}">${MONTHS[i]}${isCurrent?'<br><span style="font-size:0.6rem;color:var(--accent)">← now</span>':isPast?'<br><span style="font-size:0.6rem;color:var(--muted)">past</span>':''}
+        </div>
+        <div>
+          <div class="tl-events">${eventsHtml}</div>
+          ${actualLine}
+          <div class="cash-bar-wrap"><div class="cash-bar-fill" style="width:${barPct}%;background:${barColor}"></div></div>
+        </div>
+        <div>
+          <div class="tl-cash ${cashClass}">${cashLeft>=0?'':'−'}$${Math.abs(cashLeft).toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+          <div style="font-size:0.58rem;color:var(--muted);text-align:right;margin-top:2px;">${isPast?'was leftover':'leftover'}</div>
+        </div>
+      </div>`;
+  });
+  el.innerHTML += `
+    <div class="tl-row" style="border-top:1px solid var(--border2);margin-top:8px;padding-top:8px;">
+      <div class="tl-month" style="color:var(--accent)">YTD</div>
+      <div style="font-size:0.68rem;color:var(--dim)">Cumulative surplus after all planned expenses</div>
+      <div>
+        <div class="tl-cash ${running>=0?'ok':'low'}">${running>=0?'':'−'}$${Math.abs(running).toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+        <div style="font-size:0.58rem;color:var(--muted);text-align:right;margin-top:2px;">running total</div>
+      </div>
+    </div>`;
+}
+
+function renderKPIs(){
+  const total     = expenses.reduce((s,e)=>s+e.amt,0);
+  const committed = expenses.filter(e=>e.priority==='committed').reduce((s,e)=>s+e.amt,0);
+  const remaining = ANNUAL - total;
+  const months    = Math.ceil(total / NET_MO * 10)/10;
+
+  // Leftover savings = sum of (NET_MO - planned spend) for all past months
+  const currentMonth = new Date().getMonth() + 1;
+  const pastMonths = MONTH_NO.filter(mo => mo < currentMonth);
+  const leftover = pastMonths.reduce((sum, mo) => {
+    const moSpend = expenses.filter(e=>e.month===mo).reduce((s,e)=>s+e.amt,0);
+    return sum + Math.max(0, NET_MO - moSpend);
+  }, 0);
+  const leftoverMonthCount = pastMonths.length;
+
+  document.getElementById('kpi-total').textContent        = '$'+total.toLocaleString();
+  document.getElementById('kpi-months').textContent       = `~${months.toFixed(1)} months of net cash`;
+  document.getElementById('kpi-committed').textContent    = '$'+committed.toLocaleString();
+  document.getElementById('kpi-committed-sub').textContent= `${((committed/ANNUAL)*100).toFixed(0)}% of annual net cash`;
+  document.getElementById('kpi-remaining').textContent    = '$'+Math.max(0,remaining).toLocaleString();
+  document.getElementById('kpi-leftover').textContent     = '$'+Math.round(leftover).toLocaleString();
+  document.getElementById('kpi-leftover-sub').textContent = leftoverMonthCount > 0
+    ? `Unspent discretionary cash across ${leftoverMonthCount} completed month${leftoverMonthCount>1?'s':''} — real money you kept`
+    : 'No completed months yet — check back next month';
+}
+
+function renderChart(){
+  const labels = MONTHS;
+  let running = 0;
+  const data = MONTH_NO.map(mo=>{
+    const moSpend = expenses.filter(e=>e.month===mo).reduce((s,e)=>s+e.amt,0);
+    running += NET_MO - moSpend;
+    return Math.round(running);
+  });
+  // Baseline (no planned expenses)
+  const baseline = MONTH_NO.map((_,i)=>Math.round(NET_MO*(i+1)));
+
+  const colors = data.map(v=>v>=0?'#4ade8044':'#f8717144');
+  const borders= data.map(v=>v>=0?'#4ade80':'#f87171');
+
+  if(cashChart){
+    cashChart.data.datasets[0].data   = data;
+    cashChart.data.datasets[0].backgroundColor = colors;
+    cashChart.data.datasets[0].borderColor      = borders;
+    cashChart.data.datasets[1].data   = baseline;
+    cashChart.update('none');
+  } else {
+    cashChart = new Chart(document.getElementById('cashChart'),{
+      type:'bar',
+      data:{
+        labels,
+        datasets:[
+          {
+            label:'Cumulative Cash (with expenses)',
+            data, backgroundColor:colors, borderColor:borders, borderWidth:1,
+          },
+          {
+            label:'Baseline (no planned expenses)',
+            data:baseline, type:'line',
+            borderColor:'#ffffff33', backgroundColor:'transparent',
+            borderWidth:1.5, borderDash:[4,4], pointRadius:0, tension:0.4,
+          }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        animation:{duration:250},
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{labels:{color:'#888',font:{family:'DM Mono',size:11},boxWidth:12}},
+          tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: $${Math.round(ctx.parsed.y).toLocaleString()}`}}
+        },
+        scales:{
+          x:{ticks:{color:'#555',font:{family:'DM Mono',size:11}},grid:{color:'#1a1a1a'}},
+          y:{ticks:{color:'#555',font:{family:'DM Mono',size:11},callback:v=>'$'+v.toLocaleString()},grid:{color:'#1a1a1a'}}
+        }
+      }
+    });
+  }
+}
+
+initData();
+</script>
+</body>
+</html>
