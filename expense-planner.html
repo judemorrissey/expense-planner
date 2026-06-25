@@ -191,7 +191,7 @@
           <thead><tr><th>Field</th><th>Type</th><th>Values</th><th>Notes</th></tr></thead>
           <tbody>
             <tr><td><code>name</code> <span class="tag req">required</span></td><td>string</td><td>any</td><td>Description of the purchase</td></tr>
-            <tr><td><code>amt</code> <span class="tag req">required</span></td><td>number</td><td><code>250</code></td><td>Dollar amount — plain number, no $ sign</td></tr>
+            <tr><td><code>amt</code> <span class="tag req">required</span></td><td>number</td><td><code>250</code></td><td>Dollar amount — plain number, no $ sign. Use negative for a refund/return.</td></tr>
             <tr><td><code>month</code> <span class="tag req">required</span></td><td>number</td><td><code>1</code>&#x2013;<code>12</code></td><td>Month number</td></tr>
             <tr><td><code>year</code> <span class="tag req">required</span></td><td>number</td><td><code>2026</code></td><td>4-digit year. Defaults to planner start year if omitted.</td></tr>
             <tr><td><code>priority</code> <span class="tag req">required</span></td><td>string</td><td><code>"committed"</code> <code>"optional"</code> <code>"nicetohave"</code></td><td>committed=must buy &middot; optional=likely &middot; nicetohave=want but could skip</td></tr>
@@ -217,7 +217,7 @@ Each item must validate against this JSON Schema:
     "additionalProperties": false,
     "properties": {
       "name":      { "type": "string", "description": "Short description of the purchase" },
-      "amt":       { "type": "number", "description": "Dollar amount — plain number, no $ sign or commas" },
+      "amt":       { "type": "number", "description": "Dollar amount — plain number, no $ sign or commas. Use negative for a refund/return." },
       "month":     { "type": "integer", "minimum": 1, "maximum": 12, "description": "Month number" },
       "year":      { "type": "integer", "description": "4-digit calendar year, e.g. 2026" },
       "priority":  { "type": "string", "enum": ["committed", "optional", "nicetohave"],
@@ -238,7 +238,7 @@ My expenses:
           &#x2022; Use <strong>&#x2B06; Export</strong> to copy your current data as JSON &#x2014; handy for backups or AI bulk edits.<br>
           &#x2022; Use <strong>&#x2B07; Import &#x2192; Merge</strong> to add new items without losing existing data.<br>
           &#x2022; Use <strong>&#x2B07; Import &#x2192; Replace</strong> when an AI has rewritten your full list.<br>
-          &#x2022; The status button cycles: Committed &#x2192; Optional &#x2192; Nice to Have &#x2192; Purchased.<br>
+          &#x2022; The status button cycles: Committed &#x2192; Optional &#x2192; Nice to Have &#x2192; Purchased. For refunds (negative amounts): Expected &#x2192; Possible &#x2192; Hopeful &#x2192; Credited.<br>
           &#x2022; Click the pencil icon to rename any item inline.
         </div>
       </div>
@@ -285,7 +285,7 @@ My expenses:
   <div class="card-title">Add an Expense</div>
   <div class="add-form">
     <div class="form-group"><label class="form-label">Description</label><input type="text" id="inp-name" placeholder="e.g. Weekend trip"></div>
-    <div class="form-group"><label class="form-label">Amount ($)</label><input type="number" id="inp-amt" placeholder="0" min="0"></div>
+    <div class="form-group"><label class="form-label">Amount ($)</label><input type="number" id="inp-amt" placeholder="0"></div>
     <div class="form-group"><label class="form-label">Month</label><select id="inp-month"></select></div>
     <div class="form-group"><label class="form-label">Priority</label>
       <select id="inp-priority"><option value="committed">Committed</option><option value="optional">Optional</option><option value="nicetohave">Nice to Have</option><option value="purchased">Purchased</option></select></div>
@@ -309,6 +309,7 @@ const STORAGE_SETTINGS = 'planner_settings';
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const PRIORITY_COLORS = { committed:'#f87171', optional:'#f0a060', nicetohave:'#60c8f0' };
 const PRIORITY_LABELS = { committed:'Committed', optional:'Optional', nicetohave:'Nice to Have' };
+const REFUND_LABELS   = { committed:'Expected', optional:'Possible', nicetohave:'Hopeful' };
 
 let expenses = [];
 let settings = null;
@@ -605,12 +606,15 @@ function renderList() {
     const kb = b.year + '-' + String(b.month).padStart(2,'0');
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   }).forEach(e => {
-    const statusIcon = e.purchased ? '✅' : e.priority==='committed' ? '🔴' : e.priority==='optional' ? '🟡' : '🔵';
+    const isRefund = e.amt < 0;
+    const statusIcon = e.purchased ? (isRefund ? '🟢' : '✅') : e.priority==='committed' ? '🔴' : e.priority==='optional' ? '🟡' : '🔵';
     const row = document.createElement('div');
     row.className = 'exp-item';
     const sb = document.createElement('button');
     sb.className = 'status-btn';
-    sb.title = e.purchased ? 'Purchased — click to cycle' : PRIORITY_LABELS[e.priority] + ' — click to cycle';
+    const doneLabel = isRefund ? 'Credited' : 'Purchased';
+    const prioLabel = isRefund ? REFUND_LABELS[e.priority] : PRIORITY_LABELS[e.priority];
+    sb.title = e.purchased ? doneLabel + ' — click to cycle' : prioLabel + ' — click to cycle';
     sb.textContent = statusIcon;
     sb.onclick = () => cycleStatus(e.id);
     row.appendChild(sb);
@@ -622,7 +626,7 @@ function renderList() {
     nd.textContent = e.name;
     const sd = document.createElement('div');
     sd.className = 'exp-sub';
-    sd.textContent = e.purchased ? '✓ purchased' : PRIORITY_LABELS[e.priority];
+    sd.textContent = e.purchased ? (isRefund ? '✓ credited' : '✓ purchased') : prioLabel;
     nw.appendChild(nd); nw.appendChild(sd); row.appendChild(nw);
     const ms = document.createElement('select');
     ms.className = 'month-pill';
@@ -697,10 +701,12 @@ function renderTimeline() {
     else moExp.forEach(e => {
       const ev = document.createElement('div'); ev.className = 'tl-event';
       const pip = document.createElement('span'); pip.className = 'tl-pip';
+      const isRef = e.amt < 0;
       pip.style.background = e.purchased ? '#4ade80' : PRIORITY_COLORS[e.priority];
       const txt = document.createElement('span');
       if (e.purchased) txt.style.opacity = '0.45';
-      txt.textContent = e.name + ' — $' + e.amt.toLocaleString() + (e.purchased ? ' ✓' : '');
+      const suffix = e.purchased ? (isRef ? ' ✓ credited' : ' ✓') : '';
+      txt.textContent = e.name + ' — $' + e.amt.toLocaleString() + suffix;
       ev.appendChild(pip); ev.appendChild(txt); evDiv.appendChild(ev);
     });
     mid.appendChild(evDiv);
@@ -783,7 +789,7 @@ function addExpense() {
   const amt      = parseFloat(document.getElementById('inp-amt').value);
   const monthKey = document.getElementById('inp-month').value;
   const pri      = document.getElementById('inp-priority').value;
-  if (!name || !amt || amt <= 0) return;
+  if (!name || isNaN(amt) || amt === 0) return;
   const [y, m] = monthKey.split('-');
   const isPurchased = pri === 'purchased';
   const entry = { id: uid(), name, amt, month: parseInt(m), year: parseInt(y), priority: isPurchased ? 'committed' : pri };
@@ -809,7 +815,7 @@ function editName(id) {
 function updateAmt(id, val) {
   const e = findById(id); if (!e) return;
   const parsed = parseFloat(val);
-  if (isNaN(parsed) || parsed <= 0) return;
+  if (isNaN(parsed) || parsed === 0) return;
   e.amt = parsed; saveExpenses(); renderTimeline(); renderKPIs(); renderChart();
 }
 
