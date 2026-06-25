@@ -51,7 +51,7 @@
   .tl-cash.low{color:var(--red);}
   .cash-bar-wrap{height:5px;background:var(--border);margin-top:6px;width:100%;}
   .cash-bar-fill{height:100%;transition:width 0.3s;}
-  .add-form{display:grid;grid-template-columns:1fr 90px 160px 120px auto;gap:10px;align-items:end;margin-bottom:20px;}
+  .add-form{display:grid;grid-template-columns:1fr 90px 160px 200px auto;gap:10px;align-items:end;margin-bottom:20px;}
   .form-group{display:flex;flex-direction:column;gap:5px;}
   .form-label{font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;}
   input[type=text],input[type=number],select,textarea{background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:0.75rem;padding:8px 10px;outline:none;transition:border-color 0.15s;}
@@ -288,13 +288,13 @@ My expenses:
     <div class="form-group"><label class="form-label">Amount ($)</label><input type="number" id="inp-amt" placeholder="0"></div>
     <div class="form-group"><label class="form-label">Month</label><select id="inp-month"></select></div>
     <div class="form-group"><label class="form-label">Priority</label>
-      <select id="inp-priority"><option value="committed">Committed</option><option value="optional">Optional</option><option value="nicetohave">Nice to Have</option><option value="purchased">Purchased</option></select></div>
+      <select id="inp-priority"><option value="committed">Committed | Expected</option><option value="optional">Optional | Possible</option><option value="nicetohave">Nice to Have | Hopeful</option><option value="purchased">Purchased | Credited</option></select></div>
     <button class="btn-add" onclick="addExpense()">+ Add</button>
   </div>
 </div>
 
 <div class="grid-2">
-  <div class="card"><div class="card-title">Planned Expenses</div><div class="expense-items" id="expenseItems"></div><div class="summary-note" id="summaryNote"></div></div>
+  <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">Planned Expenses<label style="font-size:0.7rem;letter-spacing:normal;text-transform:none;cursor:pointer;display:flex;align-items:center;gap:5px;"><input type="checkbox" id="show-completed" onchange="renderList()"> Show completed</label></div><div class="expense-items" id="expenseItems"></div><div class="summary-note" id="summaryNote"></div></div>
   <div class="card"><div class="card-title" id="timeline-title">Monthly Cash Impact</div><div class="timeline" id="timeline"></div></div>
 </div>
 
@@ -310,6 +310,8 @@ const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct
 const PRIORITY_COLORS = { committed:'#f87171', optional:'#f0a060', nicetohave:'#60c8f0' };
 const PRIORITY_LABELS = { committed:'Committed', optional:'Optional', nicetohave:'Nice to Have' };
 const REFUND_LABELS   = { committed:'Expected', optional:'Possible', nicetohave:'Hopeful' };
+
+const sessionCompleted = new Set();
 
 let expenses = [];
 let settings = null;
@@ -601,11 +603,12 @@ function renderList() {
     document.getElementById('summaryNote').textContent = '';
     return;
   }
+  const showCompleted = document.getElementById('show-completed').checked;
   [...expenses].sort((a,b) => {
     const ka = a.year + '-' + String(a.month).padStart(2,'0');
     const kb = b.year + '-' + String(b.month).padStart(2,'0');
     return ka < kb ? -1 : ka > kb ? 1 : 0;
-  }).forEach(e => {
+  }).filter(e => !e.purchased || showCompleted || sessionCompleted.has(e.id)).forEach(e => {
     const isRefund = e.amt < 0;
     const statusIcon = e.purchased ? (isRefund ? '🟢' : '✅') : e.priority==='committed' ? '🔴' : e.priority==='optional' ? '🟡' : '🔵';
     const row = document.createElement('div');
@@ -824,7 +827,7 @@ function cycleStatus(id) {
   if (e.purchased)                     { e.purchased = false; e.priority = 'committed'; }
   else if (e.priority === 'committed') { e.priority = 'optional'; }
   else if (e.priority === 'optional')  { e.priority = 'nicetohave'; }
-  else                                 { e.purchased = true; }
+  else                                 { e.purchased = true; sessionCompleted.add(id); }
   saveExpenses(); renderAll();
 }
 
