@@ -29,6 +29,7 @@
   .kpi-value{font-size:1.4rem;font-weight:500;letter-spacing:-0.02em;}
   .kpi-sub{font-size:0.65rem;color:var(--muted);margin-top:5px;}
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px;}
+  .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
   .card{background:var(--surface);border:1px solid var(--border);padding:22px;}
   .card-title{font-size:0.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.12em;margin-bottom:18px;}
   .expense-items{display:flex;flex-direction:column;gap:0;}
@@ -102,7 +103,7 @@
   .cash-entry-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1a1a1a;font-size:0.75rem;}
   .cash-entry-row:last-child{border-bottom:none;}
   .import-note{font-size:0.68rem;color:var(--accent3);padding:8px 12px;border:1px solid #f0a06033;background:#f0a0600a;}
-  @media(max-width:900px){.kpi-row{grid-template-columns:1fr 1fr;}.grid-2{grid-template-columns:1fr;}.add-form{grid-template-columns:1fr 1fr;}}
+  @media(max-width:900px){.kpi-row{grid-template-columns:1fr 1fr;}.grid-2{grid-template-columns:1fr;}.grid-3{grid-template-columns:1fr;}.add-form{grid-template-columns:1fr 1fr;}}
 </style>
 </head>
 <body>
@@ -270,14 +271,36 @@ My expenses:
   <div class="kpi d"><div class="kpi-label">Remaining Cash</div><div class="kpi-value" id="kpi-remaining">&#x2014;</div><div class="kpi-sub">After all planned expenses</div></div>
 </div>
 
-<div class="kpi" style="margin-bottom:28px;border-color:#4ade8055;background:linear-gradient(90deg,#171717,#1a2a1a);">
-  <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;">
-    <div>
-      <div class="kpi-label" style="color:#4ade80;">&#x2191; Leftover Savings Accumulated</div>
-      <div class="kpi-value" id="kpi-leftover" style="color:#4ade80;">&#x2014;</div>
-      <div class="kpi-sub" id="kpi-leftover-sub">Unspent discretionary cash from completed months</div>
+<div class="grid-3" style="margin-bottom:28px;">
+  <div class="kpi" style="border-color:#4ade8055;background:linear-gradient(90deg,#171717,#1a2a1a);">
+    <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;">
+      <div>
+        <div class="kpi-label" style="color:#4ade80;">&#x2191; Leftover Savings Accumulated</div>
+        <div class="kpi-value" id="kpi-leftover" style="color:#4ade80;">&#x2014;</div>
+        <div class="kpi-sub" id="kpi-leftover-sub">Unspent discretionary cash from completed months</div>
+      </div>
+      <div style="font-size:2rem;opacity:0.3;">&#x1F3E6;</div>
     </div>
-    <div style="font-size:2rem;opacity:0.3;">&#x1F3E6;</div>
+  </div>
+  <div class="kpi" style="border-color:#f8717155;background:linear-gradient(90deg,#171717,#2a1a1a);">
+    <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;">
+      <div>
+        <div class="kpi-label" style="color:#f87171;">&#x2193; Overages Accumulated</div>
+        <div class="kpi-value" id="kpi-overage" style="color:#f87171;">&#x2014;</div>
+        <div class="kpi-sub" id="kpi-overage-sub">Overspent discretionary cash from completed months</div>
+      </div>
+      <div style="font-size:2rem;opacity:0.3;">&#x1F4B8;</div>
+    </div>
+  </div>
+  <div class="kpi" id="kpi-net-gain-card" style="border-color:#4ade8055;background:linear-gradient(90deg,#171717,#1a2a1a);">
+    <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;">
+      <div>
+        <div class="kpi-label" id="kpi-net-gain-label" style="color:#4ade80;">&#x2696; Net Gain/Loss for the Year</div>
+        <div class="kpi-value" id="kpi-net-gain" style="color:#4ade80;">&#x2014;</div>
+        <div class="kpi-sub" id="kpi-net-gain-sub">Leftover savings minus overages</div>
+      </div>
+      <div style="font-size:2rem;opacity:0.3;">&#x2696;&#xFE0F;</div>
+    </div>
   </div>
 </div>
 
@@ -575,6 +598,11 @@ function renderKPIs() {
     const spent = expenses.filter(e => e.month===pm.month && e.year===pm.year).reduce((s,e) => s+e.amt, 0);
     return sum + Math.max(0, getNetForMonth(pm.month, pm.year) - spent);
   }, 0);
+  const overage = pastMonths.reduce((sum, pm) => {
+    const spent = expenses.filter(e => e.month===pm.month && e.year===pm.year).reduce((s,e) => s+e.amt, 0);
+    return sum + Math.max(0, spent - getNetForMonth(pm.month, pm.year));
+  }, 0);
+  const netGain = leftover - overage;
   const rates = [...new Set(planMonths.map(pm => getNetForMonth(pm.month, pm.year)))];
   const netDisplay = rates.length === 1 ? '$' + rates[0].toLocaleString()
     : '$' + Math.min(...rates).toLocaleString() + ' – $' + Math.max(...rates).toLocaleString();
@@ -588,6 +616,22 @@ function renderKPIs() {
   document.getElementById('kpi-leftover').textContent     = '$' + Math.round(leftover).toLocaleString();
   document.getElementById('kpi-leftover-sub').textContent = pastMonths.length > 0
     ? 'Unspent discretionary cash across ' + pastMonths.length + ' completed month' + (pastMonths.length>1?'s':'') + ' — real money you kept'
+    : 'No completed months yet — check back next month';
+  document.getElementById('kpi-overage').textContent      = '$' + Math.round(overage).toLocaleString();
+  document.getElementById('kpi-overage-sub').textContent  = pastMonths.length > 0
+    ? 'Overspent discretionary cash across ' + pastMonths.length + ' completed month' + (pastMonths.length>1?'s':'') + ' — dipped into savings'
+    : 'No completed months yet — check back next month';
+  const gainCard  = document.getElementById('kpi-net-gain-card');
+  const gainLabel = document.getElementById('kpi-net-gain-label');
+  const gainValue = document.getElementById('kpi-net-gain');
+  const gainColor = netGain < 0 ? '#f87171' : '#4ade80';
+  gainCard.style.borderColor = gainColor + '55';
+  gainCard.style.background  = netGain < 0 ? 'linear-gradient(90deg,#171717,#2a1a1a)' : 'linear-gradient(90deg,#171717,#1a2a1a)';
+  gainLabel.style.color = gainColor;
+  gainValue.style.color = gainColor;
+  gainValue.textContent = (netGain < 0 ? '-$' : '$') + Math.round(Math.abs(netGain)).toLocaleString();
+  document.getElementById('kpi-net-gain-sub').textContent = pastMonths.length > 0
+    ? (netGain >= 0 ? 'Net ahead' : 'Net behind') + ' across ' + pastMonths.length + ' completed month' + (pastMonths.length>1?'s':'')
     : 'No completed months yet — check back next month';
 }
 
