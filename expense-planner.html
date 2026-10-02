@@ -45,6 +45,15 @@
   .tl-event{display:flex;align-items:center;gap:8px;font-size:0.72rem;}
   .tl-pip{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
   .tl-none{font-size:0.68rem;color:#333;font-style:italic;}
+  .tl-toggle{background:none;border:none;padding:2px 0 0;font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;text-align:left;cursor:pointer;display:flex;gap:6px;align-items:baseline;}
+  .tl-toggle:hover{color:var(--text);}
+  .tl-chevron{display:inline-block;font-size:0.55rem;transition:transform 0.15s;}
+  .tl-row.collapsed .tl-chevron{transform:rotate(-90deg);}
+  .tl-summary{display:flex;flex-wrap:wrap;gap:14px;font-size:0.72rem;cursor:pointer;padding-top:2px;}
+  .tl-summary-chip{display:flex;align-items:center;gap:6px;}
+  .tl-summary-count{color:var(--muted);}
+  .tl-collapse-all{background:none;border:1px solid var(--border);color:var(--muted);font:inherit;font-size:0.7rem;letter-spacing:normal;text-transform:none;padding:2px 8px;cursor:pointer;}
+  .tl-collapse-all:hover{color:var(--text);border-color:var(--muted);}
   .tl-cash{font-size:0.72rem;font-weight:500;text-align:right;white-space:nowrap;padding-top:2px;}
   .tl-cash.ok{color:var(--green);}
   .tl-cash.tight{color:var(--accent3);}
@@ -295,7 +304,7 @@ My expenses:
 
 <div class="grid-2">
   <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">Planned Expenses<label style="font-size:0.7rem;letter-spacing:normal;text-transform:none;cursor:pointer;display:flex;align-items:center;gap:5px;"><input type="checkbox" id="show-completed" onchange="renderList()"> Show completed</label></div><div class="expense-items" id="expenseItems"></div><div class="summary-note" id="summaryNote"></div></div>
-  <div class="card"><div class="card-title" id="timeline-title">Monthly Cash Impact</div><div class="timeline" id="timeline"></div></div>
+  <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;"><span id="timeline-title">Monthly Cash Impact</span><button type="button" class="tl-collapse-all" id="tl-collapse-all" onclick="toggleAllMonths()">Expand all</button></div><div class="timeline" id="timeline"></div></div>
 </div>
 
 <div class="card">
@@ -312,6 +321,8 @@ const PRIORITY_LABELS = { committed:'Committed', optional:'Optional', nicetohave
 const REFUND_LABELS   = { committed:'Expected', optional:'Possible', nicetohave:'Hopeful' };
 
 const sessionCompleted = new Set();
+// 'YYYY-MM' → collapsed boolean; months without an entry fall back to collapsed-if-past
+const monthCollapseOverrides = new Map();
 
 let expenses = [];
 let settings = null;
@@ -667,6 +678,58 @@ function renderList() {
   } else { note.textContent = ''; }
 }
 
+function isMonthCollapsed(month, year) {
+  const now = new Date();
+  const isPresentOrFutureThisYear = year === now.getFullYear() && month >= now.getMonth() + 1;
+  return monthCollapseOverrides.get(year + '-' + String(month).padStart(2, '0')) ?? !isPresentOrFutureThisYear;
+}
+
+function toggleAllMonths() {
+  const months = getPlannerMonths().filter(({ month, year }) => expenses.some(e => e.month===month && e.year===year));
+  const anyCollapsed = months.some(({ month, year }) => isMonthCollapsed(month, year));
+  months.forEach(({ month, year }) => monthCollapseOverrides.set(year + '-' + String(month).padStart(2, '0'), !anyCollapsed));
+  renderTimeline();
+}
+
+function formatSignedDollars(n) {
+  return (n >= 0 ? '' : '−') + '$' + Math.abs(n).toLocaleString(undefined, {maximumFractionDigits:0});
+}
+
+function buildMonthSummary(moExp, onClick) {
+  const groups = [
+    { color: '#4ade80',                  items: moExp.filter(e => e.purchased) },
+    { color: PRIORITY_COLORS.committed,  items: moExp.filter(e => !e.purchased && e.priority==='committed') },
+    { color: PRIORITY_COLORS.optional,   items: moExp.filter(e => !e.purchased && e.priority==='optional') },
+    { color: PRIORITY_COLORS.nicetohave, items: moExp.filter(e => !e.purchased && e.priority==='nicetohave') },
+  ];
+  const wrap = document.createElement('div'); wrap.className = 'tl-summary';
+  wrap.onclick = onClick;
+  groups.filter(g => g.items.length).forEach(g => {
+    const chip = document.createElement('span'); chip.className = 'tl-summary-chip';
+    const pip = document.createElement('span'); pip.className = 'tl-pip'; pip.style.background = g.color;
+    const count = document.createElement('span'); count.className = 'tl-summary-count'; count.textContent = '×' + g.items.length;
+    const sum = document.createElement('span'); sum.textContent = formatSignedDollars(g.items.reduce((s,e) => s+e.amt, 0));
+    chip.appendChild(pip); chip.appendChild(count); chip.appendChild(sum); wrap.appendChild(chip);
+  });
+  return wrap;
+}
+
+function appendCashBar(parent, barPct, barColor) {
+  const bw = document.createElement('div'); bw.className = 'cash-bar-wrap';
+  const bf = document.createElement('div'); bf.className = 'cash-bar-fill';
+  bf.style.width = barPct + '%'; bf.style.background = barColor;
+  bw.appendChild(bf); parent.appendChild(bw);
+}
+
+function appendLeftover(row, cashLeft, cashClass, isPast) {
+  const right = document.createElement('div');
+  const cd = document.createElement('div'); cd.className = 'tl-cash ' + cashClass;
+  cd.textContent = formatSignedDollars(cashLeft);
+  const ll = document.createElement('div'); ll.style.cssText = 'font-size:0.58rem;color:var(--muted);text-align:right;margin-top:2px;';
+  ll.textContent = isPast ? 'was leftover' : 'leftover';
+  right.appendChild(cd); right.appendChild(ll); row.appendChild(right);
+}
+
 function renderTimeline() {
   const el = document.getElementById('timeline');
   el.textContent = '';
@@ -674,6 +737,7 @@ function renderTimeline() {
   const now = new Date();
   const curMonth = now.getMonth() + 1, curYear = now.getFullYear();
   let running = 0;
+  let anyCollapsible = false, anyCollapsed = false;
   planMonths.forEach(({ month, year, label }) => {
     const moExp     = expenses.filter(e => e.month===month && e.year===year);
     const moPlanned = moExp.reduce((s,e) => s+e.amt, 0);
@@ -687,18 +751,43 @@ function renderTimeline() {
     const barPct    = netMo > 0 ? Math.max(0, Math.min(100, cashLeft/netMo*100)) : 0;
     const barColor  = cashLeft >= netMo * 0.4 ? '#4ade80' : cashLeft >= 0 ? '#f0a060' : '#f87171';
 
+    const monthKey    = year + '-' + String(month).padStart(2, '0');
+    const collapsible = moExp.length > 0;
+    const collapsed   = collapsible && isMonthCollapsed(month, year);
+    if (collapsible) { anyCollapsible = true; if (collapsed) anyCollapsed = true; }
+    const toggle = () => { monthCollapseOverrides.set(monthKey, !collapsed); renderTimeline(); };
+
     const row = document.createElement('div');
-    row.className = 'tl-row';
+    row.className = 'tl-row' + (collapsed ? ' collapsed' : '');
     if (isPast) row.style.opacity = '0.55';
 
     const mDiv = document.createElement('div');
     mDiv.className = 'tl-month' + (isCurrent ? ' current' : '');
-    mDiv.textContent = label;
-    if (isCurrent) { const s = document.createElement('span'); s.style.cssText = 'display:block;font-size:0.6rem;color:var(--accent)'; s.textContent = '← now'; mDiv.appendChild(s); }
-    else if (isPast) { const s = document.createElement('span'); s.style.cssText = 'display:block;font-size:0.6rem;color:var(--muted)'; s.textContent = 'past'; mDiv.appendChild(s); }
+    const mLabel = document.createElement('div');
+    mLabel.textContent = label;
+    if (isCurrent) { const s = document.createElement('span'); s.style.cssText = 'display:block;font-size:0.6rem;color:var(--accent)'; s.textContent = '← now'; mLabel.appendChild(s); }
+    else if (isPast) { const s = document.createElement('span'); s.style.cssText = 'display:block;font-size:0.6rem;color:var(--muted)'; s.textContent = 'past'; mLabel.appendChild(s); }
+    if (collapsible) {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'tl-toggle';
+      btn.setAttribute('aria-expanded', String(!collapsed));
+      btn.onclick = toggle;
+      const chev = document.createElement('span'); chev.className = 'tl-chevron'; chev.textContent = '▼';
+      btn.appendChild(chev); btn.appendChild(mLabel); mDiv.appendChild(btn);
+    } else {
+      mDiv.appendChild(mLabel);
+    }
     row.appendChild(mDiv);
 
     const mid = document.createElement('div');
+    if (collapsed) {
+      mid.appendChild(buildMonthSummary(moExp, toggle));
+      appendCashBar(mid, barPct, barColor);
+      row.appendChild(mid);
+      appendLeftover(row, cashLeft, cashClass, isPast);
+      el.appendChild(row);
+      return;
+    }
     const evDiv = document.createElement('div'); evDiv.className = 'tl-events';
     if (!moExp.length) { const n = document.createElement('div'); n.className = 'tl-none'; n.textContent = 'No planned expenses'; evDiv.appendChild(n); }
     else moExp.forEach(e => {
@@ -720,18 +809,14 @@ function renderTimeline() {
       const ss = document.createElement('span'); ss.style.color = 'var(--muted)'; ss.textContent = 'spent so far $' + moActual.toLocaleString();
       ar.appendChild(ps); ar.appendChild(ss); mid.appendChild(ar);
     }
-    const bw = document.createElement('div'); bw.className = 'cash-bar-wrap';
-    const bf = document.createElement('div'); bf.className = 'cash-bar-fill';
-    bf.style.width = barPct + '%'; bf.style.background = barColor;
-    bw.appendChild(bf); mid.appendChild(bw); row.appendChild(mid);
-
-    const right = document.createElement('div');
-    const cd = document.createElement('div'); cd.className = 'tl-cash ' + cashClass;
-    cd.textContent = (cashLeft >= 0 ? '' : '−') + '$' + Math.abs(cashLeft).toLocaleString(undefined, {maximumFractionDigits:0});
-    const ll = document.createElement('div'); ll.style.cssText = 'font-size:0.58rem;color:var(--muted);text-align:right;margin-top:2px;';
-    ll.textContent = isPast ? 'was leftover' : 'leftover';
-    right.appendChild(cd); right.appendChild(ll); row.appendChild(right); el.appendChild(row);
+    appendCashBar(mid, barPct, barColor);
+    row.appendChild(mid);
+    appendLeftover(row, cashLeft, cashClass, isPast);
+    el.appendChild(row);
   });
+  const allBtn = document.getElementById('tl-collapse-all');
+  allBtn.style.display = anyCollapsible ? '' : 'none';
+  allBtn.textContent = anyCollapsed ? 'Expand all' : 'Collapse all';
   const tr = document.createElement('div'); tr.className = 'tl-row';
   tr.style.cssText = 'border-top:1px solid var(--border);margin-top:8px;padding-top:8px;';
   const tl = document.createElement('div'); tl.className = 'tl-month'; tl.style.color = 'var(--accent)'; tl.textContent = 'Total';
