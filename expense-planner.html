@@ -61,6 +61,11 @@
   .tl-summary-count{color:var(--muted);}
   .tl-collapse-all{background:none;border:1px solid var(--border);color:var(--muted);font:inherit;font-size:0.7rem;letter-spacing:normal;text-transform:none;padding:2px 8px;cursor:pointer;}
   .tl-collapse-all:hover{color:var(--text);border-color:var(--muted);}
+  .tl-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;}
+  .tl-view{display:flex;}
+  .tl-view .tl-collapse-all + .tl-collapse-all{margin-left:-1px;}
+  .tl-view .tl-collapse-all.active{color:var(--text);border-color:var(--muted);background:var(--surface2);}
+  .tl-more{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px;padding:8px 10px;margin:6px 0;border:1px dashed var(--border);font-size:0.65rem;color:var(--muted);}
   .tl-cash{font-size:0.72rem;font-weight:500;text-align:right;white-space:nowrap;padding-top:2px;}
   .tl-cash.ok{color:var(--green);}
   .tl-cash.tight{color:var(--accent3);}
@@ -340,7 +345,7 @@ My expenses:
 
 <div class="grid-2">
   <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">Planned Expenses<label style="font-size:0.7rem;letter-spacing:normal;text-transform:none;cursor:pointer;display:flex;align-items:center;gap:5px;"><input type="checkbox" id="show-completed" onchange="renderList()"> Show completed</label></div><div class="expense-items" id="expenseItems"></div><div class="summary-note" id="summaryNote"></div></div>
-  <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;"><span id="timeline-title">Monthly Cash Impact</span><button type="button" class="tl-collapse-all" id="tl-collapse-all" onclick="toggleAllMonths()">Expand all</button></div><div class="timeline" id="timeline"></div></div>
+  <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;"><span id="timeline-title">Monthly Cash Impact</span><div class="tl-controls"><div class="tl-view" id="tl-view" role="group" aria-label="Timeline view"><button type="button" class="tl-collapse-all" data-view="around" onclick="setTimelineView('around')">Around now</button><button type="button" class="tl-collapse-all" data-view="year" onclick="setTimelineView('year')">By year</button></div><button type="button" class="tl-collapse-all" id="tl-collapse-all" onclick="toggleAllMonths()">Expand all</button></div></div><div class="timeline" id="timeline"></div></div>
 </div>
 
 <div class="card">
@@ -361,6 +366,10 @@ const sessionCompleted = new Set();
 const monthCollapseOverrides = new Map();
 // year → collapsed boolean; years without an entry fall back to collapsed-if-past
 const yearCollapseOverrides = new Map();
+// 'around' shows a window of months around now; 'year' shows every month grouped by year
+let timelineView = 'around';
+const TIMELINE_STEP = 3;
+const timelineWindow = { before: TIMELINE_STEP, after: TIMELINE_STEP };
 // 'YYYY-MM' bounds for the KPI cards; null means the planner's own start/end
 const kpiRange = { from: null, to: null };
 
@@ -805,10 +814,64 @@ function getPlannerYears() {
   return [...new Set(getPlannerMonths().map(pm => pm.year))];
 }
 
+// Index range of planner months the timeline shows; anchor is the current month clamped into the range
+function getTimelineBounds(planMonths) {
+  if (!planMonths.length) return { anchor: 0, start: 0, end: -1 };
+  if (timelineView === 'year') return { anchor: 0, start: 0, end: planMonths.length - 1 };
+  const now = new Date();
+  const curKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  let anchor = planMonths.findIndex(pm => pm.key === curKey);
+  if (anchor === -1) anchor = curKey < planMonths[0].key ? 0 : planMonths.length - 1;
+  return {
+    anchor,
+    start: Math.max(0, anchor - timelineWindow.before),
+    end: Math.min(planMonths.length - 1, anchor + timelineWindow.after),
+  };
+}
+
+function adjustTimelineWindow(side, delta) {
+  const planMonths = getPlannerMonths();
+  const { anchor } = getTimelineBounds(planMonths);
+  const available = side === 'before' ? anchor : planMonths.length - 1 - anchor;
+  const current = Math.min(timelineWindow[side], available);
+  timelineWindow[side] = Math.max(0, Math.min(available, current + delta));
+  renderTimeline();
+}
+
+function setTimelineView(view) {
+  timelineView = view;
+  renderTimeline();
+}
+
+function buildWindowRow(side, hidden, shown) {
+  if (hidden === 0 && shown === 0) return null;
+  const direction = side === 'before' ? 'earlier' : 'later';
+  const row = document.createElement('div'); row.className = 'tl-more';
+  const label = document.createElement('span');
+  if (hidden > 0) label.textContent = hidden + ' ' + direction + ' month' + (hidden > 1 ? 's' : '') + ' hidden';
+  else label.textContent = 'All ' + direction + ' months shown';
+  row.appendChild(label);
+  const addButton = (text, delta) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tl-collapse-all'; b.textContent = text;
+    b.onclick = () => adjustTimelineWindow(side, delta);
+    row.appendChild(b);
+  };
+  const arrow = side === 'before' ? '↑' : '↓';
+  if (hidden > 0) {
+    addButton(arrow + ' Show ' + Math.min(TIMELINE_STEP, hidden) + ' more', TIMELINE_STEP);
+    if (hidden > TIMELINE_STEP) addButton('Show all', Infinity);
+  }
+  if (shown > 0) addButton('Show fewer', -TIMELINE_STEP);
+  return row;
+}
+
 function toggleAllMonths() {
-  const months = getPlannerMonths().filter(({ month, year }) => expenses.some(e => e.month===month && e.year===year));
+  const planMonths = getPlannerMonths();
+  const { start, end } = getTimelineBounds(planMonths);
+  const months = planMonths.slice(start, end + 1).filter(({ month, year }) => expenses.some(e => e.month===month && e.year===year));
   const years = getPlannerYears();
-  const yearsCollapsible = years.length > 1;
+  const yearsCollapsible = timelineView === 'year' && years.length > 1;
   const anyMonthCollapsed = months.some(({ month, year }) => isMonthCollapsed(month, year));
   const anyYearCollapsed = yearsCollapsible && years.some(isYearCollapsed);
   const collapse = !(anyMonthCollapsed || anyYearCollapsed);
@@ -902,10 +965,17 @@ function renderTimeline() {
   const curMonth = now.getMonth() + 1, curYear = now.getFullYear();
   let running = 0;
   let anyCollapsible = false, anyCollapsed = false;
-  const multiYear = new Set(planMonths.map(pm => pm.year)).size > 1;
+  const isAround = timelineView === 'around';
+  const showYears = !isAround && new Set(planMonths.map(pm => pm.year)).size > 1;
+  const { anchor, start, end } = getTimelineBounds(planMonths);
+  document.querySelectorAll('#tl-view button').forEach(b => b.classList.toggle('active', b.dataset.view === timelineView));
+  if (isAround) {
+    const earlierRow = buildWindowRow('before', start, anchor - start);
+    if (earlierRow) el.appendChild(earlierRow);
+  }
   let lastYear = null;
-  planMonths.forEach(({ month, year, label }) => {
-    if (multiYear && year !== lastYear) {
+  planMonths.forEach(({ month, year, label }, i) => {
+    if (showYears && year !== lastYear) {
       lastYear = year;
       el.appendChild(buildYearRow(year, planMonths, year < curYear));
       anyCollapsible = true;
@@ -917,7 +987,8 @@ function renderTimeline() {
     const netMo     = getNetForMonth(month, year);
     const cashLeft  = netMo - moPlanned;
     running += cashLeft;
-    if (multiYear && isYearCollapsed(year)) return;
+    if (i < start || i > end) return;
+    if (showYears && isYearCollapsed(year)) return;
     const isPast    = year < curYear || (year === curYear && month < curMonth);
     const isCurrent = year === curYear && month === curMonth;
     const cashClass = cashLeft >= netMo * 0.4 ? 'ok' : cashLeft >= 0 ? 'tight' : 'low';
@@ -987,6 +1058,10 @@ function renderTimeline() {
     appendLeftover(row, cashLeft, cashClass, isPast);
     el.appendChild(row);
   });
+  if (isAround) {
+    const laterRow = buildWindowRow('after', planMonths.length - 1 - end, end - anchor);
+    if (laterRow) el.appendChild(laterRow);
+  }
   const allBtn = document.getElementById('tl-collapse-all');
   allBtn.style.display = anyCollapsible ? '' : 'none';
   allBtn.textContent = anyCollapsed ? 'Expand all' : 'Collapse all';
