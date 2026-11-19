@@ -277,7 +277,7 @@ My expenses:
   <div class="kpi a"><div class="kpi-label">Monthly Net Cash</div><div class="kpi-value" id="kpi-net">&#x2014;</div><div class="kpi-sub" id="kpi-net-sub">After fixed expenses &amp; savings</div></div>
   <div class="kpi b"><div class="kpi-label">Total Planned Spend</div><div class="kpi-value" id="kpi-total">&#x2014;</div><div class="kpi-sub" id="kpi-months">&#x2014;</div></div>
   <div class="kpi c"><div class="kpi-label">Committed</div><div class="kpi-value" id="kpi-committed">&#x2014;</div><div class="kpi-sub" id="kpi-committed-sub">&#x2014;</div></div>
-  <div class="kpi d"><div class="kpi-label">Remaining Cash</div><div class="kpi-value" id="kpi-remaining">&#x2014;</div><div class="kpi-sub">After all planned expenses</div></div>
+  <div class="kpi d"><div class="kpi-label">Remaining Cash</div><div class="kpi-value" id="kpi-remaining">&#x2014;</div><div class="kpi-sub" id="kpi-remaining-sub">After all planned expenses</div></div>
 </div>
 
 <div class="grid-3" style="margin-bottom:28px;">
@@ -625,7 +625,11 @@ function renderKPIs() {
   document.getElementById('kpi-months').textContent       = '~' + months.toFixed(1) + ' months of net cash';
   document.getElementById('kpi-committed').textContent    = '$' + committed.toLocaleString();
   document.getElementById('kpi-committed-sub').textContent = annual > 0 ? (committed/annual*100).toFixed(0) + '% of period net cash' : '—';
-  document.getElementById('kpi-remaining').textContent    = '$' + Math.max(0, annual - total).toLocaleString();
+  const remaining = annual - total;
+  const remainingEl = document.getElementById('kpi-remaining');
+  remainingEl.textContent = (remaining < 0 ? '-$' : '$') + Math.round(Math.abs(remaining)).toLocaleString();
+  remainingEl.style.color = remaining < 0 ? '#f87171' : '';
+  document.getElementById('kpi-remaining-sub').textContent = remaining < 0 ? 'Over plan — planned spend exceeds net cash' : 'After all planned expenses';
   document.getElementById('kpi-leftover').textContent     = '$' + Math.round(leftover).toLocaleString();
   document.getElementById('kpi-leftover-sub').textContent = pastMonths.length > 0
     ? 'Unspent discretionary cash across ' + pastMonths.length + ' completed month' + (pastMonths.length>1?'s':'') + ' — real money you kept'
