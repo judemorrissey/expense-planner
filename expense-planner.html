@@ -18,6 +18,9 @@
   .title{font-family:'Playfair Display',serif;font-size:2rem;font-weight:700;letter-spacing:-0.02em;}
   .subtitle{color:var(--muted);font-size:0.72rem;margin-top:4px;letter-spacing:0.1em;text-transform:uppercase;}
   .badge{background:var(--accent);color:#000;font-weight:500;font-size:0.78rem;padding:6px 14px;letter-spacing:0.08em;}
+  .kpi-range{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px;}
+  .kpi-range select{padding:5px 8px;font-size:0.7rem;}
+  .kpi-range-sep{color:var(--muted);font-size:0.7rem;}
   .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px;}
   .kpi{background:var(--surface);border:1px solid var(--border);padding:18px 20px;position:relative;overflow:hidden;}
   .kpi::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;}
@@ -276,6 +279,13 @@ My expenses:
   </div>
 </div>
 
+<div class="kpi-range">
+  <span class="form-label">KPIs for</span>
+  <select id="kpi-from" aria-label="KPI range start" onchange="setKpiRange('from', this.value)"></select>
+  <span class="kpi-range-sep">→</span>
+  <select id="kpi-to" aria-label="KPI range end" onchange="setKpiRange('to', this.value)"></select>
+  <button type="button" class="btn-outline" id="kpi-range-reset" onclick="resetKpiRange()">Full range</button>
+</div>
 <div class="kpi-row">
   <div class="kpi a"><div class="kpi-label">Monthly Net Cash</div><div class="kpi-value" id="kpi-net">&#x2014;</div><div class="kpi-sub" id="kpi-net-sub">After fixed expenses &amp; savings</div></div>
   <div class="kpi b"><div class="kpi-label">Total Planned Spend</div><div class="kpi-value" id="kpi-total">&#x2014;</div><div class="kpi-sub" id="kpi-months">&#x2014;</div></div>
@@ -307,7 +317,7 @@ My expenses:
   <div class="kpi" id="kpi-net-gain-card" style="border-color:#4ade8055;background:linear-gradient(90deg,#171717,#1a2a1a);">
     <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:16px;">
       <div>
-        <div class="kpi-label" id="kpi-net-gain-label" style="color:#4ade80;">&#x2696; Net Gain/Loss for the Year</div>
+        <div class="kpi-label" id="kpi-net-gain-label" style="color:#4ade80;">&#x2696; Net Gain/Loss</div>
         <div class="kpi-value" id="kpi-net-gain" style="color:#4ade80;">&#x2014;</div>
         <div class="kpi-sub" id="kpi-net-gain-sub">Leftover savings minus overages</div>
       </div>
@@ -351,6 +361,8 @@ const sessionCompleted = new Set();
 const monthCollapseOverrides = new Map();
 // year → collapsed boolean; years without an entry fall back to collapsed-if-past
 const yearCollapseOverrides = new Map();
+// 'YYYY-MM' bounds for the KPI cards; null means the planner's own start/end
+const kpiRange = { from: null, to: null };
 
 let expenses = [];
 let settings = null;
@@ -380,8 +392,48 @@ function getNetForMonth(month, year) {
   return result;
 }
 
-function getTotalAnnual() {
-  return getPlannerMonths().reduce((sum, pm) => sum + getNetForMonth(pm.month, pm.year), 0);
+// Months the KPI cards cover: the planner range narrowed by the KPI From/To selects
+function getKpiMonths() {
+  const planMonths = getPlannerMonths();
+  if (!planMonths.length) return [];
+  const keys = planMonths.map(pm => pm.key);
+  const from = keys.includes(kpiRange.from) ? kpiRange.from : keys[0];
+  const to   = keys.includes(kpiRange.to)   ? kpiRange.to   : keys[keys.length - 1];
+  return planMonths.filter(pm => pm.key >= from && pm.key <= to);
+}
+
+function renderKpiRange() {
+  const planMonths = getPlannerMonths();
+  const kpiMonths = getKpiMonths();
+  const fromSel = document.getElementById('kpi-from');
+  const toSel = document.getElementById('kpi-to');
+  [fromSel, toSel].forEach(sel => {
+    sel.textContent = '';
+    planMonths.forEach(pm => {
+      const opt = document.createElement('option');
+      opt.value = pm.key; opt.textContent = pm.label;
+      sel.appendChild(opt);
+    });
+  });
+  if (!kpiMonths.length) return;
+  fromSel.value = kpiMonths[0].key;
+  toSel.value = kpiMonths[kpiMonths.length - 1].key;
+  const isFullRange = kpiMonths.length === planMonths.length;
+  document.getElementById('kpi-range-reset').style.visibility = isFullRange ? 'hidden' : 'visible';
+}
+
+function setKpiRange(which, key) {
+  kpiRange[which] = key;
+  if (kpiRange.from && kpiRange.to && kpiRange.from > kpiRange.to) {
+    if (which === 'from') kpiRange.to = key;
+    else kpiRange.from = key;
+  }
+  renderKpiRange(); renderKPIs();
+}
+
+function resetKpiRange() {
+  kpiRange.from = null; kpiRange.to = null;
+  renderKpiRange(); renderKPIs();
 }
 
 let saveTimer = null;
@@ -592,7 +644,7 @@ async function copyLLMPrompt() {
 
 function renderAll() {
   if (!settings) return;
-  updateHeaderBadge(); renderKPIs(); renderList(); renderTimeline(); renderChart();
+  updateHeaderBadge(); renderKpiRange(); renderKPIs(); renderList(); renderTimeline(); renderChart();
 }
 
 function updateHeaderBadge() {
@@ -604,21 +656,23 @@ function updateHeaderBadge() {
 }
 
 function renderKPIs() {
-  const total     = expenses.reduce((s,e) => s+e.amt, 0);
-  const committed = expenses.filter(e => e.priority==='committed').reduce((s,e) => s+e.amt, 0);
-  const annual    = getTotalAnnual();
-  const planMonths = getPlannerMonths();
+  const planMonths = getKpiMonths();
+  const kpiKeys   = new Set(planMonths.map(pm => pm.key));
+  const kpiExpenses = expenses.filter(e => kpiKeys.has(e.year + '-' + String(e.month).padStart(2,'0')));
+  const total     = kpiExpenses.reduce((s,e) => s+e.amt, 0);
+  const committed = kpiExpenses.filter(e => e.priority==='committed').reduce((s,e) => s+e.amt, 0);
+  const annual    = planMonths.reduce((sum, pm) => sum + getNetForMonth(pm.month, pm.year), 0);
   const avgNet    = planMonths.length > 0 ? annual / planMonths.length : 0;
   const months    = avgNet > 0 ? Math.ceil(total / avgNet * 10) / 10 : 0;
   const now = new Date();
   const curMonth = now.getMonth() + 1, curYear = now.getFullYear();
   const pastMonths = planMonths.filter(pm => pm.year < curYear || (pm.year === curYear && pm.month < curMonth));
   const leftover = pastMonths.reduce((sum, pm) => {
-    const spent = expenses.filter(e => e.month===pm.month && e.year===pm.year).reduce((s,e) => s+e.amt, 0);
+    const spent = kpiExpenses.filter(e => e.month===pm.month && e.year===pm.year).reduce((s,e) => s+e.amt, 0);
     return sum + Math.max(0, getNetForMonth(pm.month, pm.year) - spent);
   }, 0);
   const overage = pastMonths.reduce((sum, pm) => {
-    const spent = expenses.filter(e => e.month===pm.month && e.year===pm.year).reduce((s,e) => s+e.amt, 0);
+    const spent = kpiExpenses.filter(e => e.month===pm.month && e.year===pm.year).reduce((s,e) => s+e.amt, 0);
     return sum + Math.max(0, spent - getNetForMonth(pm.month, pm.year));
   }, 0);
   const netGain = leftover - overage;
