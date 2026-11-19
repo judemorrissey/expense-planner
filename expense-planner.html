@@ -629,6 +629,8 @@ function renderKPIs() {
   const remainingEl = document.getElementById('kpi-remaining');
   remainingEl.textContent = (remaining < 0 ? '-$' : '$') + Math.round(Math.abs(remaining)).toLocaleString();
   remainingEl.style.color = remaining < 0 ? '#f87171' : '';
+  remainingEl.parentElement.classList.toggle('b', remaining < 0);
+  remainingEl.parentElement.classList.toggle('d', remaining >= 0);
   document.getElementById('kpi-remaining-sub').textContent = remaining < 0 ? 'Over plan — planned spend exceeds net cash' : 'After all planned expenses';
   document.getElementById('kpi-leftover').textContent     = '$' + Math.round(leftover).toLocaleString();
   document.getElementById('kpi-leftover-sub').textContent = pastMonths.length > 0
