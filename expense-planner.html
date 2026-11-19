@@ -163,7 +163,7 @@
       </div>
       <div>
         <div class="section-label">Monthly cash schedule</div>
-        <div style="font-size:0.68rem;color:var(--muted);margin-bottom:12px;line-height:1.6;">Each entry sets your monthly net cash from that month onwards. Add a new entry whenever your income changes.</div>
+        <div style="font-size:0.68rem;color:var(--muted);margin-bottom:12px;line-height:1.6;">Each entry sets your monthly net cash from that month onwards. When your income changes, pick the month, enter the new amount, and click <strong>+ Add entry</strong> (Save settings also adds it if you forget). Re-adding a month replaces its amount.</div>
         <div id="cash-schedule-list" style="margin-bottom:14px;"></div>
         <div class="field-row cols-3" style="align-items:flex-end;">
           <div class="form-group"><label class="form-label">From month</label>
@@ -519,6 +519,7 @@ function saveSettingsModal() {
   if (endKey < startKey) { errEl.textContent = 'End must be after start.'; return; }
   settings.startMonth = startMonth; settings.startYear = startYear;
   settings.endMonth   = endMonth;   settings.endYear   = endYear;
+  addCashEntry();
   saveSettings(); closeModal(); renderAll(); initAddForm();
 }
 
