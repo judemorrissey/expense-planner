@@ -447,11 +447,13 @@ function completeOnboarding() {
 
 function showSettings() {
   const curYear = new Date().getFullYear();
+  const firstYear = Math.min(curYear - 1, settings.startYear);
+  const lastYear  = Math.max(curYear + 5, settings.endYear);
   ['set-start-year','set-end-year','sch-year'].forEach(id => {
     const sel = document.getElementById(id);
     const cur = parseInt(sel.value) || curYear;
     sel.textContent = '';
-    for (let y = curYear - 1; y <= curYear + 5; y++) {
+    for (let y = firstYear; y <= lastYear; y++) {
       const opt = document.createElement('option');
       opt.value = y; opt.textContent = y;
       if (y === cur) opt.selected = true;
