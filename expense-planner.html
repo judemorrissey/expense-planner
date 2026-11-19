@@ -40,6 +40,9 @@
   .timeline{display:flex;flex-direction:column;gap:0;}
   .tl-row{display:grid;grid-template-columns:80px 1fr auto;align-items:start;gap:16px;padding:12px 0;border-bottom:1px solid #1a1a1a;}
   .tl-row:last-child{border-bottom:none;}
+  .tl-row.tl-year{border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-top:6px;}
+  .tl-row.tl-year:first-child{border-top:none;margin-top:0;}
+  .tl-row.tl-year .tl-month{color:var(--text);font-weight:500;font-size:0.75rem;}
   .tl-month{font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;padding-top:2px;}
   .tl-month.current{color:var(--accent);font-weight:500;}
   .tl-events{display:flex;flex-direction:column;gap:6px;}
@@ -346,6 +349,8 @@ const REFUND_LABELS   = { committed:'Expected', optional:'Possible', nicetohave:
 const sessionCompleted = new Set();
 // 'YYYY-MM' → collapsed boolean; months without an entry fall back to collapsed-if-past
 const monthCollapseOverrides = new Map();
+// year → collapsed boolean; years without an entry fall back to collapsed-if-past
+const yearCollapseOverrides = new Map();
 
 let expenses = [];
 let settings = null;
@@ -738,11 +743,62 @@ function isMonthCollapsed(month, year) {
   return monthCollapseOverrides.get(year + '-' + String(month).padStart(2, '0')) ?? isPast;
 }
 
+function isYearCollapsed(year) {
+  return yearCollapseOverrides.get(year) ?? year < new Date().getFullYear();
+}
+
+function getPlannerYears() {
+  return [...new Set(getPlannerMonths().map(pm => pm.year))];
+}
+
 function toggleAllMonths() {
   const months = getPlannerMonths().filter(({ month, year }) => expenses.some(e => e.month===month && e.year===year));
-  const anyCollapsed = months.some(({ month, year }) => isMonthCollapsed(month, year));
-  months.forEach(({ month, year }) => monthCollapseOverrides.set(year + '-' + String(month).padStart(2, '0'), !anyCollapsed));
+  const years = getPlannerYears();
+  const yearsCollapsible = years.length > 1;
+  const anyMonthCollapsed = months.some(({ month, year }) => isMonthCollapsed(month, year));
+  const anyYearCollapsed = yearsCollapsible && years.some(isYearCollapsed);
+  const collapse = !(anyMonthCollapsed || anyYearCollapsed);
+  months.forEach(({ month, year }) => monthCollapseOverrides.set(year + '-' + String(month).padStart(2, '0'), collapse));
+  if (yearsCollapsible) years.forEach(y => yearCollapseOverrides.set(y, collapse));
   renderTimeline();
+}
+
+function buildYearRow(year, planMonths, isPast) {
+  const yrMonths = planMonths.filter(pm => pm.year === year);
+  const yrExp    = expenses.filter(e => e.year === year && yrMonths.some(pm => pm.month === e.month));
+  const yrNet    = yrMonths.reduce((s, pm) => s + getNetForMonth(pm.month, pm.year), 0);
+  const cashLeft = yrNet - yrExp.reduce((s, e) => s + e.amt, 0);
+  let cashClass = 'low', barColor = '#f87171';
+  if (cashLeft >= yrNet * 0.4) { cashClass = 'ok'; barColor = '#4ade80'; }
+  else if (cashLeft >= 0) { cashClass = 'tight'; barColor = '#f0a060'; }
+  const barPct    = yrNet > 0 ? Math.max(0, Math.min(100, cashLeft/yrNet*100)) : 0;
+  const collapsed = isYearCollapsed(year);
+  const toggle = () => { yearCollapseOverrides.set(year, !collapsed); renderTimeline(); };
+
+  const row = document.createElement('div');
+  row.className = 'tl-row tl-year' + (collapsed ? ' collapsed' : '');
+  if (isPast) row.style.opacity = '0.55';
+
+  const yDiv = document.createElement('div'); yDiv.className = 'tl-month';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'tl-toggle';
+  btn.setAttribute('aria-expanded', String(!collapsed));
+  btn.onclick = toggle;
+  const chev = document.createElement('span'); chev.className = 'tl-chevron'; chev.textContent = '▼';
+  const yLabel = document.createElement('div'); yLabel.textContent = year;
+  const sub = document.createElement('span'); sub.style.cssText = 'display:block;font-size:0.6rem;color:var(--muted)';
+  sub.textContent = yrMonths.length + ' month' + (yrMonths.length > 1 ? 's' : '');
+  yLabel.appendChild(sub);
+  btn.appendChild(chev); btn.appendChild(yLabel); yDiv.appendChild(btn);
+  row.appendChild(yDiv);
+
+  const mid = document.createElement('div');
+  if (yrExp.length) mid.appendChild(buildMonthSummary(yrExp, toggle));
+  else { const n = document.createElement('div'); n.className = 'tl-none'; n.textContent = 'No planned expenses'; mid.appendChild(n); }
+  appendCashBar(mid, barPct, barColor);
+  row.appendChild(mid);
+  appendLeftover(row, cashLeft, cashClass, isPast);
+  return row;
 }
 
 function formatSignedDollars(n) {
@@ -792,13 +848,22 @@ function renderTimeline() {
   const curMonth = now.getMonth() + 1, curYear = now.getFullYear();
   let running = 0;
   let anyCollapsible = false, anyCollapsed = false;
+  const multiYear = new Set(planMonths.map(pm => pm.year)).size > 1;
+  let lastYear = null;
   planMonths.forEach(({ month, year, label }) => {
+    if (multiYear && year !== lastYear) {
+      lastYear = year;
+      el.appendChild(buildYearRow(year, planMonths, year < curYear));
+      anyCollapsible = true;
+      if (isYearCollapsed(year)) anyCollapsed = true;
+    }
     const moExp     = expenses.filter(e => e.month===month && e.year===year);
     const moPlanned = moExp.reduce((s,e) => s+e.amt, 0);
     const moActual  = moExp.filter(e => e.purchased).reduce((s,e) => s+e.amt, 0);
     const netMo     = getNetForMonth(month, year);
     const cashLeft  = netMo - moPlanned;
     running += cashLeft;
+    if (multiYear && isYearCollapsed(year)) return;
     const isPast    = year < curYear || (year === curYear && month < curMonth);
     const isCurrent = year === curYear && month === curMonth;
     const cashClass = cashLeft >= netMo * 0.4 ? 'ok' : cashLeft >= 0 ? 'tight' : 'low';
